@@ -87,7 +87,7 @@ export const createRateLimiterMiddleware = (logger: Logger, trustedUserProxyIps:
 
   // Concurrent request limiters
   const untrustedIpConcurrentLimiter = new RateLimiterMemory({
-    points: 5,
+    points: 15,
     duration: 0, // Duration 0 means we manually manage release
   })
 
@@ -97,12 +97,12 @@ export const createRateLimiterMiddleware = (logger: Logger, trustedUserProxyIps:
   })
 
   const untrustedHostnameConcurrentLimiter = new RateLimiterMemory({
-    points: 50,
+    points: 250,
     duration: 0,
   })
 
   const trustedHostnameConcurrentLimiter = new RateLimiterMemory({
-    points: 200,
+    points: 250,
     duration: 0,
   })
 
@@ -152,7 +152,9 @@ export const createRateLimiterMiddleware = (logger: Logger, trustedUserProxyIps:
       )
     } catch (rateLimiterRes: any) {
       const retryAfter = Math.ceil(rateLimiterRes.msBeforeNext / 1000)
-      warn(`${trustedClient ? 'Trusted' : 'Untrusted'} IP rate limit exceeded. Retry after ${retryAfter} seconds`)
+      warn(
+        `${trustedClient ? 'Trusted' : 'Untrusted'} IP rate limit exceeded. Retry after ${retryAfter} seconds [1]. ${rateLimiterRes}`
+      )
       res.set('Retry-After', String(retryAfter))
       res.status(429).send(`Too Many Requests: retry after ${retryAfter} seconds [1]`)
       return
@@ -170,7 +172,9 @@ export const createRateLimiterMiddleware = (logger: Logger, trustedUserProxyIps:
       )
     } catch (rateLimiterRes: any) {
       const retryAfter = Math.ceil(rateLimiterRes.msBeforeNext / 1000)
-      warn(`${trustedClient ? 'Trusted' : 'Untrusted'} Hostname rate limit exceeded. Retry after ${retryAfter} seconds`)
+      warn(
+        `${trustedClient ? 'Trusted' : 'Untrusted'} Hostname rate limit exceeded. Retry after ${retryAfter} seconds [2]. ${rateLimiterRes}`
+      )
       res.set('Retry-After', String(retryAfter))
       res.status(429).send(`Too Many Requests: retry after ${retryAfter} seconds [2]`)
       return
@@ -194,46 +198,58 @@ export const createRateLimiterMiddleware = (logger: Logger, trustedUserProxyIps:
     }
 
     // Check concurrent limits per IP per hostname
+    const ipConcurrentLimiterInstance = trustedClient ? trustedIpConcurrentLimiter : untrustedIpConcurrentLimiter
+    const ipConcurrentKey = `${endClientIp}:${hostname}`
     try {
-      const limiter = trustedClient ? trustedIpConcurrentLimiter : untrustedIpConcurrentLimiter
-      const key = `${endClientIp}:${hostname}`
-      const ipConcurrentResult = await limiter.consume(key)
+      const ipConcurrentResult = await ipConcurrentLimiterInstance.consume(ipConcurrentKey)
       dbg(
-        `${trustedClient ? 'Trusted' : 'Untrusted'} IP concurrent request accepted. Key: ${key}. Points remaining: ${ipConcurrentResult.remainingPoints}${
+        `${trustedClient ? 'Trusted' : 'Untrusted'} IP concurrent request accepted. Key: ${ipConcurrentKey}. Points remaining: ${ipConcurrentResult.remainingPoints}${
           trustedClient ? ' (trusted)' : ''
         }`
       )
       releaseConcurrentCallbacks.push(async () => {
-        const ipConcurrentReleaseResult = await limiter.reward(key, 1)
+        const ipConcurrentReleaseResult = await ipConcurrentLimiterInstance.reward(ipConcurrentKey, 1)
         dbg(
-          `${trustedClient ? 'Trusted' : 'Untrusted'} released IP concurrent point. Key: ${key}. Points remaining: ${ipConcurrentReleaseResult.remainingPoints}`
+          `${trustedClient ? 'Trusted' : 'Untrusted'} released IP concurrent point. Key: ${ipConcurrentKey}. Points remaining: ${ipConcurrentReleaseResult.remainingPoints}`
         )
       })
     } catch (rateLimiterRes: any) {
-      warn(`${trustedClient ? 'Trusted' : 'Untrusted'} IP concurrent limit exceeded.`)
+      try {
+        await ipConcurrentLimiterInstance.reward(ipConcurrentKey, 1)
+      } catch (rewardErr) {
+        warn(`Failed to revert ${trustedClient ? 'trusted' : 'untrusted'} IP concurrent limiter.`, rewardErr)
+      }
+      warn(`${trustedClient ? 'Trusted' : 'Untrusted'} IP concurrent limit exceeded. [3]. ${rateLimiterRes}`)
       res.status(429).send(`Too Many Requests: concurrent request limit exceeded [3]`)
       return
     }
 
     // Check overall concurrent limits per host
+    const hostnameConcurrentLimiterInstance = trustedClient
+      ? trustedHostnameConcurrentLimiter
+      : untrustedHostnameConcurrentLimiter
+    const hostnameConcurrentKey = hostname
     try {
-      const key = hostname
-      const limiter = trustedClient ? trustedHostnameConcurrentLimiter : untrustedHostnameConcurrentLimiter
-      const hostnameConcurrentResult = await limiter.consume(key)
+      const hostnameConcurrentResult = await hostnameConcurrentLimiterInstance.consume(hostnameConcurrentKey)
       dbg(
-        `${trustedClient ? 'Trusted' : 'Untrusted'} hostname concurrent request accepted. Key: ${key}. Points remaining: ${hostnameConcurrentResult.remainingPoints}${
+        `${trustedClient ? 'Trusted' : 'Untrusted'} hostname concurrent request accepted. Key: ${hostnameConcurrentKey}. Points remaining: ${hostnameConcurrentResult.remainingPoints}${
           trustedClient ? ' (trusted)' : ''
         }`
       )
       releaseConcurrentCallbacks.push(async () => {
-        const hostnameConcurrentReleaseResult = await limiter.reward(key, 1)
+        const hostnameConcurrentReleaseResult = await hostnameConcurrentLimiterInstance.reward(hostnameConcurrentKey, 1)
         dbg(
-          `${trustedClient ? 'Trusted' : 'Untrusted'} released hostname concurrent point. Key: ${key}. Points remaining: ${hostnameConcurrentReleaseResult.remainingPoints}`
+          `${trustedClient ? 'Trusted' : 'Untrusted'} released hostname concurrent point. Key: ${hostnameConcurrentKey}. Points remaining: ${hostnameConcurrentReleaseResult.remainingPoints}`
         )
       })
     } catch (rateLimiterRes: any) {
+      try {
+        await hostnameConcurrentLimiterInstance.reward(hostnameConcurrentKey, 1)
+      } catch (rewardErr) {
+        warn(`Failed to revert ${trustedClient ? 'trusted' : 'untrusted'} hostname concurrent limiter.`, rewardErr)
+      }
       await releaseConcurrentPoints()
-      warn(`${trustedClient ? 'Trusted' : 'Untrusted'} hostname concurrent limit exceeded.`)
+      warn(`${trustedClient ? 'Trusted' : 'Untrusted'} hostname concurrent limit exceeded. [4]. ${rateLimiterRes}`)
       res.status(429).send(`Too Many Requests: concurrent request limit exceeded [4]`)
       return
     }

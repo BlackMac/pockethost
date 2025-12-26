@@ -9,18 +9,11 @@ RUN npm install -g pnpm pm2
 
 WORKDIR /app
 
-# Copy package files first for better layer caching
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
-COPY packages/pockethost/package.json ./packages/pockethost/
-COPY packages/dashboard/package.json ./packages/dashboard/
-COPY packages/pockethost-instance/package.json ./packages/pockethost-instance/
-COPY packages/pockethost/src/mothership-app/package.json ./packages/pockethost/src/mothership-app/
+# Copy everything (pnpm workspaces need full structure including patches)
+COPY . .
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
-
-# Copy source code
-COPY . .
 
 # Create data directories
 RUN mkdir -p /data/pockethost/data /data/pockethost/gobot

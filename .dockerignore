@@ -1,0 +1,47 @@
+# Dependencies (will be installed fresh in container)
+node_modules
+**/node_modules
+
+# Git
+.git
+.gitignore
+
+# Build artifacts
+dist
+build
+.svelte-kit
+
+# Development files
+.env
+.env.*
+!.env-template
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test coverage
+coverage
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Documentation (not needed at runtime)
+docs
+*.md
+!README.md
+
+# Claude plans
+.claude

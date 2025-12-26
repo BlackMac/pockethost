@@ -1,8 +1,15 @@
 FROM node:20-alpine
 
-# Install Docker CLI (for dockerode to communicate with host Docker daemon)
-# and other required tools
-RUN apk add --no-cache docker-cli bash curl
+# Install Docker CLI and build tools for native dependencies
+# (better-sqlite3, sharp, ssh2, etc. need compilation)
+RUN apk add --no-cache \
+    docker-cli \
+    bash \
+    curl \
+    python3 \
+    make \
+    g++ \
+    git
 
 # Install pnpm and PM2 globally
 RUN npm install -g pnpm pm2

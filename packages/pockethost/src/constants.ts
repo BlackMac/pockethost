@@ -89,8 +89,9 @@ export const createSettings = () => ({
   TRACE: mkBoolean(false),
 
   PH_FTP_PORT: mkNumber(21),
-  SSL_KEY: mkPath(join(_SSL_HOME, `${TLS_PFX}.key`)),
-  SSL_CERT: mkPath(join(_SSL_HOME, `${TLS_PFX}.cert`)),
+  PH_DISABLE_SSL: mkBoolean(false),
+  SSL_KEY: mkPath(join(_SSL_HOME, `${TLS_PFX}.key`), { required: false }),
+  SSL_CERT: mkPath(join(_SSL_HOME, `${TLS_PFX}.cert`), { required: false }),
   PH_FTP_PASV_IP: mkString(`0.0.0.0`),
   PH_FTP_PASV_PORT_MIN: mkNumber(10000),
   PH_FTP_PASV_PORT_MAX: mkNumber(20000),
@@ -115,6 +116,8 @@ export const createSettings = () => ({
   SYSLOGD_PORT: mkNumber(6514),
 
   DOCKER_CONTAINER_HOST: mkString(`host.docker.internal`),
+
+  PH_PROXY_HEALTH_URL: mkString(''),
 
   PH_GOBOT_ROOT: mkPath(join(_PH_HOME, 'gobot'), { create: true }),
 
@@ -197,8 +200,9 @@ export const IS_DEV = () => settings().IS_DEV
 export const TRACE = () => settings().TRACE
 
 export const PH_FTP_PORT = () => settings().PH_FTP_PORT
-export const SSL_KEY = () => settings().SSL_KEY
-export const SSL_CERT = () => settings().SSL_CERT
+export const PH_DISABLE_SSL = () => settings().PH_DISABLE_SSL
+export const SSL_KEY = () => (PH_DISABLE_SSL() ? '' : settings().SSL_KEY)
+export const SSL_CERT = () => (PH_DISABLE_SSL() ? '' : settings().SSL_CERT)
 export const PH_FTP_PASV_IP = () => settings().PH_FTP_PASV_IP
 export const PH_FTP_PASV_PORT_MIN = () => settings().PH_FTP_PASV_PORT_MIN
 export const PH_FTP_PASV_PORT_MAX = () => settings().PH_FTP_PASV_PORT_MAX
@@ -228,6 +232,8 @@ export const LS_WEBHOOK_SECRET = () => settings().LS_WEBHOOK_SECRET
 export const SYSLOGD_PORT = () => settings().SYSLOGD_PORT
 
 export const DOCKER_CONTAINER_HOST = () => settings().DOCKER_CONTAINER_HOST
+
+export const PH_PROXY_HEALTH_URL = () => settings().PH_PROXY_HEALTH_URL
 
 export const PH_GOBOT_ROOT = (...paths: string[]) => join(settings().PH_GOBOT_ROOT, ...paths)
 
@@ -294,6 +300,7 @@ export const logConstants = () => {
     IS_DEV,
     TRACE,
     PH_FTP_PORT,
+    PH_DISABLE_SSL,
     SSL_KEY,
     SSL_CERT,
     PH_FTP_PASV_IP,
@@ -309,6 +316,7 @@ export const logConstants = () => {
     LS_WEBHOOK_SECRET,
     SYSLOGD_PORT,
     DOCKER_CONTAINER_HOST,
+    PH_PROXY_HEALTH_URL,
     PH_GOBOT_ROOT,
     PH_MAX_CONCURRENT_DOCKER_LAUNCHES,
     MOTHERSHIP_DATA_ROOT,

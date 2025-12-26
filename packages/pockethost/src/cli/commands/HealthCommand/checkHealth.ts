@@ -3,7 +3,14 @@ import { execSync } from 'child_process'
 import fetch from 'node-fetch'
 import { default as osu } from 'node-os-utils'
 import { freemem } from 'os'
-import { DAEMON_PORT, DISCORD_HEALTH_CHANNEL_URL, LoggerService, MOTHERSHIP_PORT, stringify } from '../../..'
+import {
+  DAEMON_PORT,
+  DISCORD_HEALTH_CHANNEL_URL,
+  LoggerService,
+  MOTHERSHIP_PORT,
+  PH_PROXY_HEALTH_URL,
+  stringify,
+} from '../../..'
 
 export const checkHealth = async () => {
   const { cpu, drive } = osu
@@ -164,14 +171,20 @@ export const checkHealth = async () => {
   console.log(meta.join('\n'))
   await send(meta)
 
+  const proxyHealthUrl = PH_PROXY_HEALTH_URL()
   const checks: Check[] = [
-    {
-      name: `edge proxy`,
-      priority: 10,
-      emoji: `:park:`,
-      isHealthy: false,
-      url: `https://proxy.pockethost.io/_api/health`,
-    },
+    // Only include edge proxy check if PH_PROXY_HEALTH_URL is configured
+    ...(proxyHealthUrl
+      ? [
+          {
+            name: `edge proxy`,
+            priority: 10,
+            emoji: `:park:`,
+            isHealthy: false,
+            url: proxyHealthUrl,
+          },
+        ]
+      : []),
     {
       name: `edge daemon`,
       priority: 8,

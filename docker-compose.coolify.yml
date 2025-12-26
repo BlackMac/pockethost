@@ -1,0 +1,88 @@
+services:
+  pockethost:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      # Core settings
+      - APEX_DOMAIN=${APEX_DOMAIN}
+      - HTTP_PROTOCOL=https:
+      - APP_URL=https://app.${APEX_DOMAIN}
+      - NODE_ENV=production
+
+      # Disable SSL (Coolify's Traefik handles SSL termination)
+      - PH_DISABLE_SSL=true
+
+      # Internal ports
+      - DAEMON_PORT=3000
+      - MOTHERSHIP_PORT=8091
+      - MOTHERSHIP_NAME=pockethost-central
+
+      # Data paths (inside container)
+      - PH_HOME=/data/pockethost
+      - DATA_ROOT=/data/pockethost/data
+
+      # Mothership admin credentials
+      - MOTHERSHIP_ADMIN_USERNAME=${MOTHERSHIP_ADMIN_USERNAME}
+      - MOTHERSHIP_ADMIN_PASSWORD=${MOTHERSHIP_ADMIN_PASSWORD}
+
+      # GitHub token for fetching PocketBase releases
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+
+      # Docker container networking (for spawned instances to reach host)
+      - DOCKER_CONTAINER_HOST=host.docker.internal
+
+      # Discord webhooks (optional)
+      - DISCORD_HEALTH_CHANNEL_URL=${DISCORD_HEALTH_CHANNEL_URL:-}
+      - DISCORD_ALERT_CHANNEL_URL=${DISCORD_ALERT_CHANNEL_URL:-}
+
+      # Health check proxy URL (leave empty when behind Coolify)
+      - PH_PROXY_HEALTH_URL=
+
+    volumes:
+      # Docker socket for spawning PocketBase instance containers
+      - /var/run/docker.sock:/var/run/docker.sock
+
+      # Persistent data storage
+      - pockethost-data:/data/pockethost
+
+    extra_hosts:
+      # Allow containers to reach host services
+      - "host.docker.internal:host-gateway"
+
+    labels:
+      # Enable Traefik
+      - "traefik.enable=true"
+
+      # Mothership route (pockethost-central.yourdomain.com -> port 8091)
+      - "traefik.http.routers.pockethost-mothership.rule=Host(`pockethost-central.${APEX_DOMAIN}`)"
+      - "traefik.http.routers.pockethost-mothership.entrypoints=https"
+      - "traefik.http.routers.pockethost-mothership.tls=true"
+      - "traefik.http.routers.pockethost-mothership.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.pockethost-mothership.service=pockethost-mothership"
+      - "traefik.http.services.pockethost-mothership.loadbalancer.server.port=8091"
+      - "traefik.http.routers.pockethost-mothership.priority=100"
+
+      # Wildcard route for all instances (*.yourdomain.com -> port 3000)
+      - "traefik.http.routers.pockethost-daemon.rule=HostRegexp(`{subdomain:[a-z0-9-]+}.${APEX_DOMAIN}`)"
+      - "traefik.http.routers.pockethost-daemon.entrypoints=https"
+      - "traefik.http.routers.pockethost-daemon.tls=true"
+      - "traefik.http.routers.pockethost-daemon.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.pockethost-daemon.tls.domains[0].main=${APEX_DOMAIN}"
+      - "traefik.http.routers.pockethost-daemon.tls.domains[0].sans=*.${APEX_DOMAIN}"
+      - "traefik.http.routers.pockethost-daemon.service=pockethost-daemon"
+      - "traefik.http.services.pockethost-daemon.loadbalancer.server.port=3000"
+      - "traefik.http.routers.pockethost-daemon.priority=50"
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/_api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+    restart: unless-stopped
+
+volumes:
+  pockethost-data:
+    driver: local
